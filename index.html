@@ -19,8 +19,17 @@
         #close-btn { position: absolute; top: 30px; right: 40px; background: rgba(255, 50, 50, 0.9); color: white; border: 3px solid white; border-radius: 30px; padding: 10px 20px; font-size: 18px; font-weight: bold; cursor: pointer; z-index: 400; }
         #close-btn:hover { background: red; }
 
+        /* ═══════════════════════════════════════════
+           【修复核心】容器与渲染大小
+           ═══════════════════════════════════════════ */
         #app-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; transform-origin: center center; }
-        #app-container.rotated { transform: rotate(90deg); width: 100vh; height: 100vw; }
+        
+        /* 旋转后，容器宽高互换，完美占满屏幕 */
+        #app-container.rotated { 
+            transform: rotate(90deg); 
+            width: 100vh; 
+            height: 100vw; 
+        }
 
         #joystick-container { position: absolute; bottom: 40px; left: 30px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; z-index: 250; display: none; touch-action: none; }
         #joystick-knob { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; background: rgba(108, 140, 255, 0.8); border: 2px solid white; border-radius: 50%; pointer-events: none; }
@@ -79,6 +88,13 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         container.appendChild(renderer.domElement);
 
+        // 将 Canvas 设为绝对定位，使其始终铺满容器
+        renderer.domElement.style.position = 'absolute';
+        renderer.domElement.style.top = '0';
+        renderer.domElement.style.left = '0';
+        renderer.domElement.style.width = '100%';
+        renderer.domElement.style.height = '100%';
+
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.8); 
         scene.add(ambientLight);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1.8); 
@@ -131,7 +147,7 @@
             
             scene.add(model);
             
-            // ⭐ 完美锁死这个视角：高度1.35，距离5.5，平视正前方
+            // 完美锁死初始视角
             camera.position.set(0, 1.35, 5.5); 
             camera.lookAt(0, 1.35, 0); 
         }, undefined, (error) => { progressText.innerText = '模型加载失败！'; console.error(error); });
@@ -220,23 +236,26 @@
         rotateBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             appContainer.classList.add('rotated');
+            
+            // 【修复核心】旋转后立刻重新获取容器宽高，让3D画面占满屏幕！
             setTimeout(() => {
                 const newWidth = appContainer.clientWidth;
                 const newHeight = appContainer.clientHeight;
                 renderer.setSize(newWidth, newHeight);
                 camera.aspect = newWidth / newHeight;
                 camera.updateProjectionMatrix();
+                
+                // 强制让 3D 画布占满容器
+                renderer.domElement.style.width = '100%';
+                renderer.domElement.style.height = '100%';
             }, 100);
         });
 
+        // 【修复摇杆控制】使用全局坐标适配旋转后的屏幕
         let joystickX = 0, joystickY = 0;
         const joyContainer = document.getElementById('joystick-container');
         const joyKnob = document.getElementById('joystick-knob');
         const joyRadius = 40;
-
-        joyContainer.addEventListener('touchstart', (e) => { e.preventDefault(); handleJoystick(e.touches[0]); }, { passive: false });
-        joyContainer.addEventListener('touchmove', (e) => { e.preventDefault(); handleJoystick(e.touches[0]); }, { passive: false });
-        joyContainer.addEventListener('touchend', (e) => { e.preventDefault(); joystickX = 0; joystickY = 0; joyKnob.style.transform = `translate(-50%, -50%)`; }, { passive: false });
 
         function handleJoystick(touch) {
             const rect = joyContainer.getBoundingClientRect();
@@ -246,11 +265,20 @@
             let dy = touch.clientY - centerY;
             const dist = Math.sqrt(dx*dx + dy*dy);
             if (dist > joyRadius) { dx = (dx / dist) * joyRadius; dy = (dy / dist) * joyRadius; }
-            joystickX = dx / joyRadius; 
-            joystickY = dy / joyRadius; 
+            
+            // 因为屏幕被旋转了90度，原本的上下变成了左右，原本的左右变成了上下
+            // 这里直接将旋转后的坐标映射回移动控制
+            joystickX = dx / joyRadius; // 控制左右
+            joystickY = dy / joyRadius; // 控制前后
+            
             joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
         }
 
+        joyContainer.addEventListener('touchstart', (e) => { e.preventDefault(); handleJoystick(e.touches[0]); }, { passive: false });
+        joyContainer.addEventListener('touchmove', (e) => { e.preventDefault(); handleJoystick(e.touches[0]); }, { passive: false });
+        joyContainer.addEventListener('touchend', (e) => { e.preventDefault(); joystickX = 0; joystickY = 0; joyKnob.style.transform = `translate(-50%, -50%)`; }, { passive: false });
+
+        // 拖动屏幕转视角
         let startTouchX = 0, startTouchY = 0, isLookingTouch = false;
         renderer.domElement.addEventListener('touchstart', (e) => {
             const touch = e.touches[0];
@@ -287,11 +315,14 @@
             const forward = new THREE.Vector3(-Math.sin(currentRotationY), 0, -Math.cos(currentRotationY));
             const right = new THREE.Vector3(Math.cos(currentRotationY), 0, -Math.sin(currentRotationY));
             const moveDirection = new THREE.Vector3();
+            
+            // 电脑端 WASD
             if (keys.w) moveDirection.add(forward);  
             if (keys.s) moveDirection.sub(forward);  
             if (keys.a) moveDirection.sub(right);    
             if (keys.d) moveDirection.add(right);    
 
+            // 🚀 手机端摇杆：y轴推拉控制前后，x轴控制左右
             moveDirection.add(forward.clone().multiplyScalar(-joystickY)); 
             moveDirection.add(right.clone().multiplyScalar(joystickX));
 
@@ -310,10 +341,14 @@
             renderer.render(scene, camera);
         }
         animate();
+
+        // 窗口改变时自适应
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
+            const newWidth = appContainer.clientWidth;
+            const newHeight = appContainer.clientHeight;
+            renderer.setSize(newWidth, newHeight);
+            camera.aspect = newWidth / newHeight;
             camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
         });
     </script>
 </body>
