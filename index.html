@@ -63,8 +63,6 @@
         scene.background = new THREE.Color(0x111122); 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
-        
-        // 直接铺满屏幕
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.domElement.style.position = 'fixed';
         renderer.domElement.style.top = '0';
@@ -110,8 +108,9 @@
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
             
+            // 放大到 20米，确保人走在模型内部
             const maxDim = Math.max(size.x, size.y, size.z);
-            const scale = 10 / maxDim; 
+            const scale = 20 / maxDim; 
             model.scale.set(scale, scale, scale);
             
             const newBox = new THREE.Box3().setFromObject(model);
@@ -122,8 +121,10 @@
             model.position.y -= newMinY;
             
             scene.add(model);
-            camera.position.set(0, 1.35, 5.5); 
-            camera.lookAt(0, 1.35, 0); 
+            
+            // 初始位置在模型内部中心，向下看向前
+            camera.position.set(0, 1.2, 0); 
+            camera.lookAt(0, 1.2, -5); 
         }, undefined, (error) => { progressText.innerText = '模型加载失败！'; console.error(error); });
 
         const uiMapping = { 
@@ -184,8 +185,11 @@
         const keys = { w: false, a: false, s: false, d: false, q: false, e: false };
         let targetRotationY = 0; 
         let currentRotationY = 0; 
-        let cameraHeight = 1.65; 
+        let cameraHeight = 1.2; // 初始向下
 
+        renderer.domElement.addEventListener('click', () => {
+            if (!document.pointerLockElement && !document.getElementById('info-modal').classList.contains('show')) renderer.domElement.requestPointerLock();
+        });
         document.addEventListener('pointerlockchange', () => {
             if (document.pointerLockElement !== renderer.domElement) { document.getElementById('crosshair').style.display = 'none'; }
             else { document.getElementById('crosshair').style.display = 'block'; }
@@ -218,7 +222,7 @@
         joyContainer.addEventListener('touchmove', (e) => { e.preventDefault(); handleJoystick(e.touches[0]); }, { passive: false });
         joyContainer.addEventListener('touchend', (e) => { e.preventDefault(); joystickX = 0; joystickY = 0; joyKnob.style.transform = `translate(-50%, -50%)`; }, { passive: false });
 
-        // 手机端拖动视角
+        // 手机端拖动视角控制 (上下滑动调整高度)
         let startTouchX = 0, startTouchY = 0, isLookingTouch = false;
         renderer.domElement.addEventListener('touchstart', (e) => {
             const touch = e.touches[0];
@@ -232,7 +236,14 @@
             if (!isLookingTouch) return;
             const touch = e.touches[0];
             const deltaX = touch.clientX - startTouchX;
-            targetRotationY -= deltaX * 0.005; 
+            const deltaY = touch.clientY - startTouchY;
+            
+            targetRotationY -= deltaX * 0.005; // 左右滑动控制视角
+            
+            // 上下滑动控制镜头高度
+            cameraHeight += deltaY * 0.01;
+            cameraHeight = Math.max(0.5, Math.min(2.5, cameraHeight)); // 限制高度范围
+            
             startTouchX = touch.clientX;
             startTouchY = touch.clientY;
         }, { passive: true });
@@ -244,8 +255,7 @@
             requestAnimationFrame(animate);
             currentRotationY += (targetRotationY - currentRotationY) * 0.1;
             camera.rotation.y = currentRotationY;
-
-            camera.position.y = 1.35; // 锁死高度
+            camera.position.y = cameraHeight; // 应用高度控制
 
             const forward = new THREE.Vector3(-Math.sin(currentRotationY), 0, -Math.cos(currentRotationY));
             const right = new THREE.Vector3(Math.cos(currentRotationY), 0, -Math.sin(currentRotationY));
@@ -256,7 +266,6 @@
             if (keys.a) moveDirection.sub(right);    
             if (keys.d) moveDirection.add(right);    
 
-            // 手机摇杆
             moveDirection.add(forward.clone().multiplyScalar(-joystickY)); 
             moveDirection.add(right.clone().multiplyScalar(joystickX));
 
