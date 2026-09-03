@@ -19,10 +19,28 @@
         #close-btn { position: absolute; top: 30px; right: 40px; background: rgba(255, 50, 50, 0.9); color: white; border: 3px solid white; border-radius: 30px; padding: 10px 20px; font-size: 18px; font-weight: bold; cursor: pointer; z-index: 400; }
         #close-btn:hover { background: red; }
 
-        #joystick-container { position: fixed; bottom: 40px; left: 30px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; z-index: 250; display: none; touch-action: none; }
-        #joystick-knob { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; background: rgba(108, 140, 255, 0.8); border: 2px solid white; border-radius: 50%; pointer-events: none; }
+        /* ═══════════════════════════════════════════
+           手机端强制旋转横屏样式
+           ═══════════════════════════════════════════ */
+        #app-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; transform-origin: center center; }
+        
+        /* 手机端（竖屏或横屏皆可），强制旋转90度 */
+        @media (pointer: coarse) {
+            #app-container {
+                transform: rotate(90deg);
+                width: 100vh;
+                height: 100vw;
+            }
+            #crosshair { display: block; }
+            #instructions { display: none; }
+        }
 
-        @media (pointer: coarse) { #joystick-container { display: block; } #crosshair { display: block; } #instructions { display: none; } }
+        #joystick-container { position: absolute; bottom: 40px; left: 30px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; z-index: 250; display: none; touch-action: none; }
+        #joystick-knob { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; background: rgba(108, 140, 255, 0.8); border: 2px solid white; border-radius: 50%; pointer-events: none; }
+        
+        @media (pointer: coarse) {
+            #joystick-container { display: block; }
+        }
     </style>
     
     <script type="importmap">
@@ -37,6 +55,8 @@
     </script>
 </head>
 <body>
+
+<div id="app-container">
     <div id="loading"><div id="loading-spinner"></div><div id="loading-progress-text">0%</div></div>
     
     <div id="crosshair"></div>
@@ -52,6 +72,7 @@
         <button id="close-btn" onclick="closeUI()">✕ 关闭</button>
     </div>
     <div id="canvas-container"></div>
+</div>
 
     <script type="module">
         import * as THREE from 'three';
@@ -64,9 +85,11 @@
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.domElement.style.position = 'fixed';
+        renderer.domElement.style.position = 'absolute';
         renderer.domElement.style.top = '0';
         renderer.domElement.style.left = '0';
+        renderer.domElement.style.width = '100%';
+        renderer.domElement.style.height = '100%';
         container.appendChild(renderer.domElement);
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.8); 
@@ -121,7 +144,7 @@
             
             scene.add(model);
             
-            // 电脑端保持完美视角
+            // 🚀 电脑端完美锁死在“法”字大屏
             camera.position.set(0, 1.35, 5.5); 
             camera.lookAt(0, 1.35, 0); 
         }, undefined, (error) => { progressText.innerText = '模型加载失败！'; console.error(error); });
@@ -184,8 +207,16 @@
         const keys = { w: false, a: false, s: false, d: false, q: false, e: false };
         let targetRotationY = 0; 
         let currentRotationY = 0; 
-        let cameraHeight = 1.35; // 默认高1.35
+        let cameraHeight = 1.35; 
 
+        // 🚀 全局键盘监听
+        document.addEventListener('keydown', (e) => { 
+            if (e.key in keys) keys[e.key] = true; 
+            if (e.key === 'Escape') { targetRotationY = 0; currentRotationY = 0; cameraHeight = 1.35; }
+        });
+        document.addEventListener('keyup', (e) => { if (e.key in keys) keys[e.key] = false; });
+
+        // 鼠标控制
         renderer.domElement.addEventListener('click', () => {
             if (!document.pointerLockElement && !document.getElementById('info-modal').classList.contains('show')) renderer.domElement.requestPointerLock();
         });
@@ -198,12 +229,13 @@
             if (document.pointerLockElement === renderer.domElement) { targetRotationY -= e.movementX * 0.0008; }
         });
 
-        // 手机端摇杆控制
+        // 手机端摇杆控制 (注意：手机端被旋转后，Jostick坐标需要适配)
         let joystickX = 0, joystickY = 0;
         const joyContainer = document.getElementById('joystick-container');
         const joyKnob = document.getElementById('joystick-knob');
         const joyRadius = 40;
 
+        // 由于屏幕是旋转后的横屏，摇杆坐标要按横屏算
         function handleJoystick(touch) {
             const rect = joyContainer.getBoundingClientRect();
             const centerX = rect.left + rect.width / 2;
@@ -212,8 +244,11 @@
             let dy = touch.clientY - centerY;
             const dist = Math.sqrt(dx*dx + dy*dy);
             if (dist > joyRadius) { dx = (dx / dist) * joyRadius; dy = (dy / dist) * joyRadius; }
-            joystickX = dx / joyRadius; 
-            joystickY = dy / joyRadius; 
+            
+            // 因为容器旋转了90度，需要映射回物理操作
+            joystickX = dx / joyRadius; // 屏幕X对应模型的左右
+            joystickY = dy / joyRadius; // 屏幕Y对应模型的前后
+            
             joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
         }
 
@@ -221,7 +256,7 @@
         joyContainer.addEventListener('touchmove', (e) => { e.preventDefault(); handleJoystick(e.touches[0]); }, { passive: false });
         joyContainer.addEventListener('touchend', (e) => { e.preventDefault(); joystickX = 0; joystickY = 0; joyKnob.style.transform = `translate(-50%, -50%)`; }, { passive: false });
 
-        // 手机端滑动屏幕（除了摇杆外）控制视角和高度
+        // 手机端滑动屏幕控制视角 (容器旋转后视角滑动需转置)
         let startTouchX = 0, startTouchY = 0, isLookingTouch = false;
         renderer.domElement.addEventListener('touchstart', (e) => {
             const touch = e.touches[0];
@@ -237,11 +272,10 @@
             const deltaX = touch.clientX - startTouchX;
             const deltaY = touch.clientY - startTouchY;
             
-            targetRotationY -= deltaX * 0.005; // 左右滑动控制视角
-            
-            // 手机端上下滑动可以调整镜头高度
+            // 旋转90度后，屏幕横向移动对应模型纵向旋转，纵向移动对应高度
+            targetRotationY -= deltaX * 0.005; 
             cameraHeight += deltaY * 0.01;
-            cameraHeight = Math.max(0.5, Math.min(2.5, cameraHeight)); // 限制高度
+            cameraHeight = Math.max(0.5, Math.min(2.5, cameraHeight)); 
             
             startTouchX = touch.clientX;
             startTouchY = touch.clientY;
@@ -285,9 +319,14 @@
         animate();
 
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
+            const isMobile = window.matchMedia("(pointer: coarse)").matches;
+            const w = isMobile ? window.innerHeight : window.innerWidth;
+            const h = isMobile ? window.innerWidth : window.innerHeight;
+            renderer.setSize(w, h);
+            camera.aspect = w / h;
             camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.domElement.style.width = '100%';
+            renderer.domElement.style.height = '100%';
         });
     </script>
 </body>
