@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>展厅交互</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: "Microsoft YaHei", sans-serif; touch-action: none; background: #111; }
+        #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a1a; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: #fff; transition: opacity 0.8s ease; }
+        #loading-spinner { width: 48px; height: 48px; border: 3px solid rgba(255, 255, 255, 0.1); border-top: 3px solid #6c8cff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 24px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #loading-progress-text { font-size: 14px; letter-spacing: 2px; color: rgba(255, 255, 255, 0.6); }
+        .hidden { opacity: 0; pointer-events: none; }
+        #crosshair { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 8px; height: 8px; background-color: red; border-radius: 50%; z-index: 150; pointer-events: none; display: none; }
+        #instructions { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); color: white; font-size: 16px; text-align: center; z-index: 200; background: rgba(0,0,0,0.7); padding: 12px 20px; border-radius: 8px; pointer-events: none; line-height: 1.8; }
+        #info-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.8); z-index: 300; display: none; justify-content: center; align-items: center; overflow: hidden; }
+        #info-modal.show { display: flex; }
+        #modal-image { max-width: 70vw; max-height: 70vh; border: 3px solid #fff; box-shadow: 0 0 30px rgba(255,255,255,0.3); object-fit: contain; background: #fff; transition: transform 0.1s ease-out; cursor: grab; user-select: none; }
+        #close-btn { position: absolute; top: 30px; right: 40px; background: rgba(255, 50, 50, 0.9); color: white; border: 3px solid white; border-radius: 30px; padding: 10px 20px; font-size: 18px; font-weight: bold; cursor: pointer; z-index: 400; }
+        #close-btn:hover { background: red; }
+
+        /* ═══════════════════════════════════════════
+           手机端强制横屏 UI 样式（竖屏时旋转，横屏时正常）
+           ═══════════════════════════════════════════ */
+        #app-container {
+            position: fixed;
+            width: 100vw;
+            height: 100vh;
+            transform-origin: center center;
+        }
+
+        #joystick-container {
+            position: absolute;
+            bottom: 40px;
+            left: 30px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.4);
+            border-radius: 50%;
+            z-index: 250;
+            display: none;
+            touch-action: none;
+        }
+        #joystick-knob {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50px;
+            height: 50px;
+            background: rgba(108, 140, 255, 0.8);
+            border: 2px solid white;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        /* 手机端（竖屏）强制旋转 */
+        @media (max-width: 900px) and (orientation: portrait) {
+            #app-container {
+                transform: rotate(90deg);
+                width: 100vh;
+                height: 100vw;
+            }
+            #joystick-container { display: block; left: 50%; bottom: 30px; transform: translateX(-50%); }
+            #crosshair { display: block; }
+        }
+        /* 手机端（横屏）正常显示 */
+        @media (max-width: 900px) and (orientation: landscape) {
+            #app-container { width: 100vw; height: 100vh; }
+            #joystick-container { display: block; }
+        }
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js",
+                "three/addons/loaders/GLTFLoader.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js",
+                "three/addons/loaders/DRACOLoader.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/DRACOLoader.js",
+                "three/addons/utils/BufferGeometryUtils.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js"
+            }
+        }
+    </script>
+</head>
+<body>
+
+<div id="app-container">
+    <div id="loading"><div id="loading-spinner"></div><div id="loading-progress-text">0%</div></div>
+    
+    <div id="crosshair"></div>
+    <div id="instructions">
+        <b>W A S D</b> 移动 &nbsp;&nbsp; <b>鼠标</b> 左右转头 &nbsp;&nbsp; <b>Q / E</b> 升高 / 降低视角<br>
+        准星对准展板点击左键弹出画面
+    </div>
+
+    <div id="joystick-container">
+        <div id="joystick-knob"></div>
+    </div>
+
+    <div id="info-modal">
+        <img id="modal-image" src="" alt="图片加载失败">
+        <button id="close-btn" onclick="closeUI()">✕ 关闭</button>
+    </div>
+    <div id="canvas-container"></div>
+</div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111122); 
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+        directionalLight.position.set(5, 10, 7.5);
+        scene.add(directionalLight);
+
+        const loadingScreen = document.getElementById('loading');
+        const progressText = document.getElementById('loading-progress-text');
+        const manager = new THREE.LoadingManager();
+        manager.onProgress = (url, itemsLoaded, itemsTotal) => { progressText.innerText = (itemsLoaded / itemsTotal * 100).toFixed(0) + '%'; };
+        manager.onLoad = () => { setTimeout(() => { loadingScreen.classList.add('hidden'); setTimeout(() => loadingScreen.style.display = 'none', 800); }, 500); };
+
+        let mainModel = null; 
+        const loader = new GLTFLoader(manager);
+        
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
+        loader.setDRACOLoader(dracoLoader);
+        
+        loader.load('02_new.glb', function (gltf) {
+            const model = gltf.scene;
+            mainModel = model; 
+            model.traverse((child) => { if (child.isMesh) child.castShadow = true; });
+            
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const scale = 20 / maxDim; 
+            
+            model.scale.set(scale, scale, scale);
+            
+            const newBox = new THREE.Box3().setFromObject(model);
+            const newCenter = newBox.getCenter(new THREE.Vector3());
+            const newMinY = newBox.min.y;
+            
+            model.position.x -= newCenter.x;
+            model.position.z -= newCenter.z;
+            model.position.y -= newMinY;
+            
+            scene.add(model);
+            camera.position.set(0, 1.65, 5); 
+        }, undefined, (error) => { progressText.innerText = '模型加载失败！'; console.error(error); });
+
+        const uiMapping = { 
+            "组_339": "01.png", 
+            "组_316": "02.png" 
+        };
+
+        function showUI(src) {
+            document.getElementById('modal-image').src = src;
+            document.getElementById('info-modal').classList.add('show');
+            document.exitPointerLock(); 
+            resetImageTransform(); 
+        }
+        window.closeUI = function() {
+            document.getElementById('info-modal').classList.remove('show');
+        };
+
+        const raycaster = new THREE.Raycaster();
+        const centerVec = new THREE.Vector2(0, 0);
+        
+        renderer.domElement.addEventListener('click', (e) => {
+            if (mainModel) {
+                raycaster.setFromCamera(centerVec, camera);
+                const intersects = raycaster.intersectObject(mainModel, true);
+                if (intersects.length > 0) {
+                    let clickedObj = intersects[0].object;
+                    while (clickedObj) {
+                        if (uiMapping[clickedObj.name]) { showUI(uiMapping[clickedObj.name]); return; }
+                        clickedObj = clickedObj.parent;
+                    }
+                }
+            }
+        });
+
+        const img = document.getElementById('modal-image');
+        const modal = document.getElementById('info-modal');
+        let scale = 1, translateX = 0, translateY = 0, isDragging = false, startX = 0, startY = 0;
+        modal.addEventListener('wheel', (e) => {
+            if (!modal.classList.contains('show')) return;
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.1 : -0.1;
+            scale = Math.max(0.5, Math.min(3, scale - delta)); 
+            applyTransform();
+        });
+        img.addEventListener('mousedown', (e) => {
+            isDragging = true; startX = e.clientX - translateX; startY = e.clientY - translateY;
+            img.style.cursor = 'grabbing';
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) { translateX = e.clientX - startX; translateY = e.clientY - startY; applyTransform(); }
+        });
+        document.addEventListener('mouseup', () => { isDragging = false; img.style.cursor = 'grab'; });
+        function applyTransform() { img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`; }
+        function resetImageTransform() { scale = 1; translateX = 0; translateY = 0; applyTransform(); }
+
+        // 电脑端键盘控制
+        const keys = { w: false, a: false, s: false, d: false, q: false, e: false };
+        let targetRotationY = 0; 
+        let currentRotationY = 0; 
+        let cameraHeight = 1.65; 
+
+        renderer.domElement.addEventListener('click', () => {
+            if (!document.pointerLockElement && !document.getElementById('info-modal').classList.contains('show')) renderer.domElement.requestPointerLock();
+        });
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement !== renderer.domElement) { instructions.style.display = 'block'; document.getElementById('crosshair').style.display = 'none'; }
+            else { instructions.style.display = 'none'; document.getElementById('crosshair').style.display = 'block'; }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === renderer.domElement) { targetRotationY -= e.movementX * 0.0008; }
+        });
+
+        document.addEventListener('keydown', (e) => { 
+            if (e.key in keys) keys[e.key] = true; 
+            if (e.key === 'Escape') { targetRotationY = 0; currentRotationY = 0; cameraHeight = 1.65; }
+        });
+        document.addEventListener('keyup', (e) => { if (e.key in keys) keys[e.key] = false; });
+
+        // 手机端触摸控制
+        let joystickX = 0, joystickY = 0;
+        const joyContainer = document.getElementById('joystick-container');
+        const joyKnob = document.getElementById('joystick-knob');
+        const joyRadius = 40;
+
+        joyContainer.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleJoystick(e.touches[0]);
+        }, { passive: false });
+
+        joyContainer.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            handleJoystick(e.touches[0]);
+        }, { passive: false });
+
+        joyContainer.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            joystickX = 0; joystickY = 0;
+            joyKnob.style.transform = `translate(-50%, -50%)`;
+        }, { passive: false });
+
+        function handleJoystick(touch) {
+            const rect = joyContainer.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+
+            let dx = touch.clientX - centerX;
+            let dy = touch.clientY - centerY;
+            
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist > joyRadius) {
+                dx = (dx / dist) * joyRadius;
+                dy = (dy / dist) * joyRadius;
+            }
+            
+            joystickX = dx / joyRadius; 
+            joystickY = dy / joyRadius; 
+            
+            joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        }
+
+        let startTouchX = 0;
+        let startTouchY = 0;
+        let isLookingTouch = false;
+
+        renderer.domElement.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            const joyRect = joyContainer.getBoundingClientRect();
+            if (touch.clientX >= joyRect.left && touch.clientX <= joyRect.right && touch.clientY >= joyRect.top && touch.clientY <= joyRect.bottom) {
+                return; 
+            }
+            isLookingTouch = true;
+            startTouchX = touch.clientX;
+            startTouchY = touch.clientY;
+        }, { passive: true });
+
+        renderer.domElement.addEventListener('touchmove', (e) => {
+            if (!isLookingTouch) return;
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - startTouchX;
+            targetRotationY -= deltaX * 0.005; 
+            startTouchX = touch.clientX;
+            startTouchY = touch.clientY;
+        }, { passive: true });
+
+        renderer.domElement.addEventListener('touchend', () => {
+            isLookingTouch = false;
+        }, { passive: true });
+
+        const speed = 2.5; 
+        const minHeight = 1.0; 
+        const maxHeight = 2.2; 
+
+        function animate() {
+            requestAnimationFrame(animate);
+            currentRotationY += (targetRotationY - currentRotationY) * 0.1;
+            camera.rotation.y = currentRotationY;
+
+            if (keys.q) cameraHeight += 0.03;
+            if (keys.e) cameraHeight -= 0.03;
+            cameraHeight = Math.max(minHeight, Math.min(maxHeight, cameraHeight));
+            camera.position.y = cameraHeight;
+
+            const forward = new THREE.Vector3(-Math.sin(currentRotationY), 0, -Math.cos(currentRotationY));
+            const right = new THREE.Vector3(Math.cos(currentRotationY), 0, -Math.sin(currentRotationY));
+            const moveDirection = new THREE.Vector3();
+
+            if (keys.w) moveDirection.add(forward);  
+            if (keys.s) moveDirection.sub(forward);  
+            if (keys.a) moveDirection.sub(right);    
+            if (keys.d) moveDirection.add(right);    
+
+            moveDirection.add(forward.clone().multiplyScalar(-joystickY)); 
+            moveDirection.add(right.clone().multiplyScalar(joystickX));
+
+            if (moveDirection.length() > 0) {
+                moveDirection.normalize();
+                const moveSpeed = speed * 0.016; 
+                const nextPos = camera.position.clone().add(moveDirection.multiplyScalar(moveSpeed));
+                if (mainModel) {
+                    const moveRay = new THREE.Raycaster(camera.position, moveDirection.clone().normalize());
+                    const intersects = moveRay.intersectObject(mainModel, true);
+                    if (intersects.length > 0 && intersects[0].distance < 0.5) {} 
+                    else { camera.position.copy(nextPos); }
+                } else { camera.position.copy(nextPos); }
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
