@@ -19,57 +19,18 @@
         #close-btn { position: absolute; top: 30px; right: 40px; background: rgba(255, 50, 50, 0.9); color: white; border: 3px solid white; border-radius: 30px; padding: 10px 20px; font-size: 18px; font-weight: bold; cursor: pointer; z-index: 400; }
         #close-btn:hover { background: red; }
 
-        /* ═══════════════════════════════════════════
-           手机端强制横屏 UI 样式（竖屏时旋转，横屏时正常）
-           ═══════════════════════════════════════════ */
-        #app-container {
-            position: fixed;
-            width: 100vw;
-            height: 100vh;
-            transform-origin: center center;
-        }
+        #app-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; transform-origin: center center; }
+        #app-container.rotated { transform: rotate(90deg); width: 100vh; height: 100vw; }
 
-        #joystick-container {
-            position: absolute;
-            bottom: 40px;
-            left: 30px;
-            width: 120px;
-            height: 120px;
-            background: rgba(255,255,255,0.1);
-            border: 2px solid rgba(255,255,255,0.4);
-            border-radius: 50%;
-            z-index: 250;
-            display: none;
-            touch-action: none;
-        }
-        #joystick-knob {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 50px;
-            height: 50px;
-            background: rgba(108, 140, 255, 0.8);
-            border: 2px solid white;
-            border-radius: 50%;
-            pointer-events: none;
-        }
+        #joystick-container { position: absolute; bottom: 40px; left: 30px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; z-index: 250; display: none; touch-action: none; }
+        #joystick-knob { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; background: rgba(108, 140, 255, 0.8); border: 2px solid white; border-radius: 50%; pointer-events: none; }
 
-        /* 手机端（竖屏）强制旋转 */
-        @media (max-width: 900px) and (orientation: portrait) {
-            #app-container {
-                transform: rotate(90deg);
-                width: 100vh;
-                height: 100vw;
-            }
-            #joystick-container { display: block; left: 50%; bottom: 30px; transform: translateX(-50%); }
-            #crosshair { display: block; }
-        }
-        /* 手机端（横屏）正常显示 */
-        @media (max-width: 900px) and (orientation: landscape) {
-            #app-container { width: 100vw; height: 100vh; }
-            #joystick-container { display: block; }
-        }
+        #rotate-btn { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 20px 40px; background: #6c8cff; color: white; font-size: 24px; font-weight: bold; border-radius: 50px; border: 2px solid white; z-index: 999; cursor: pointer; display: none; box-shadow: 0 0 20px rgba(108, 140, 255, 0.8); user-select: none; }
+
+        @media (pointer: coarse) { #rotate-btn { display: block; } #instructions { display: none; } }
+        #app-container.rotated #rotate-btn { display: none; }
+        #app-container.rotated #joystick-container { display: block; }
+        #app-container.rotated #crosshair { display: block; }
     </style>
     
     <script type="importmap">
@@ -94,9 +55,9 @@
         准星对准展板点击左键弹出画面
     </div>
 
-    <div id="joystick-container">
-        <div id="joystick-knob"></div>
-    </div>
+    <div id="rotate-btn">点击进入横屏浏览</div>
+
+    <div id="joystick-container"><div id="joystick-knob"></div></div>
 
     <div id="info-modal">
         <img id="modal-image" src="" alt="图片加载失败">
@@ -118,11 +79,14 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         container.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8); 
         scene.add(ambientLight);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.8); 
         directionalLight.position.set(5, 10, 7.5);
         scene.add(directionalLight);
+        const rimLight = new THREE.DirectionalLight(0x4488ff, 0.3); 
+        rimLight.position.set(-5, 5, -10);
+        scene.add(rimLight);
 
         const loadingScreen = document.getElementById('loading');
         const progressText = document.getElementById('loading-progress-text');
@@ -140,27 +104,36 @@
         loader.load('02_new.glb', function (gltf) {
             const model = gltf.scene;
             mainModel = model; 
-            model.traverse((child) => { if (child.isMesh) child.castShadow = true; });
+            model.traverse((child) => { 
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    if (child.material) {
+                        if (child.material.map) { child.material.roughness = 0.6; child.material.metalness = 0.05; }
+                        else { child.material.color.setHex(0xdddddd); child.material.roughness = 0.7; child.material.metalness = 0.0; }
+                    }
+                }
+            });
             
             const box = new THREE.Box3().setFromObject(model);
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
             
             const maxDim = Math.max(size.x, size.y, size.z);
-            const scale = 20 / maxDim; 
-            
+            const scale = 10 / maxDim; 
             model.scale.set(scale, scale, scale);
             
             const newBox = new THREE.Box3().setFromObject(model);
             const newCenter = newBox.getCenter(new THREE.Vector3());
             const newMinY = newBox.min.y;
-            
             model.position.x -= newCenter.x;
             model.position.z -= newCenter.z;
             model.position.y -= newMinY;
             
             scene.add(model);
-            camera.position.set(0, 1.65, 5); 
+            
+            // ⭐ 完美锁死这个视角：高度1.35，距离5.5，平视正前方
+            camera.position.set(0, 1.35, 5.5); 
+            camera.lookAt(0, 1.35, 0); 
         }, undefined, (error) => { progressText.innerText = '模型加载失败！'; console.error(error); });
 
         const uiMapping = { 
@@ -174,8 +147,10 @@
             document.exitPointerLock(); 
             resetImageTransform(); 
         }
+        
         window.closeUI = function() {
             document.getElementById('info-modal').classList.remove('show');
+            setTimeout(() => { renderer.domElement.requestPointerLock(); }, 100);
         };
 
         const raycaster = new THREE.Raycaster();
@@ -216,7 +191,6 @@
         function applyTransform() { img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`; }
         function resetImageTransform() { scale = 1; translateX = 0; translateY = 0; applyTransform(); }
 
-        // 电脑端键盘控制
         const keys = { w: false, a: false, s: false, d: false, q: false, e: false };
         let targetRotationY = 0; 
         let currentRotationY = 0; 
@@ -240,63 +214,52 @@
         });
         document.addEventListener('keyup', (e) => { if (e.key in keys) keys[e.key] = false; });
 
-        // 手机端触摸控制
+        const appContainer = document.getElementById('app-container');
+        const rotateBtn = document.getElementById('rotate-btn');
+
+        rotateBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            appContainer.classList.add('rotated');
+            setTimeout(() => {
+                const newWidth = appContainer.clientWidth;
+                const newHeight = appContainer.clientHeight;
+                renderer.setSize(newWidth, newHeight);
+                camera.aspect = newWidth / newHeight;
+                camera.updateProjectionMatrix();
+            }, 100);
+        });
+
         let joystickX = 0, joystickY = 0;
         const joyContainer = document.getElementById('joystick-container');
         const joyKnob = document.getElementById('joystick-knob');
         const joyRadius = 40;
 
-        joyContainer.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            handleJoystick(e.touches[0]);
-        }, { passive: false });
-
-        joyContainer.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            handleJoystick(e.touches[0]);
-        }, { passive: false });
-
-        joyContainer.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            joystickX = 0; joystickY = 0;
-            joyKnob.style.transform = `translate(-50%, -50%)`;
-        }, { passive: false });
+        joyContainer.addEventListener('touchstart', (e) => { e.preventDefault(); handleJoystick(e.touches[0]); }, { passive: false });
+        joyContainer.addEventListener('touchmove', (e) => { e.preventDefault(); handleJoystick(e.touches[0]); }, { passive: false });
+        joyContainer.addEventListener('touchend', (e) => { e.preventDefault(); joystickX = 0; joystickY = 0; joyKnob.style.transform = `translate(-50%, -50%)`; }, { passive: false });
 
         function handleJoystick(touch) {
             const rect = joyContainer.getBoundingClientRect();
             const centerX = rect.left + rect.width / 2;
             const centerY = rect.top + rect.height / 2;
-
             let dx = touch.clientX - centerX;
             let dy = touch.clientY - centerY;
-            
             const dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist > joyRadius) {
-                dx = (dx / dist) * joyRadius;
-                dy = (dy / dist) * joyRadius;
-            }
-            
+            if (dist > joyRadius) { dx = (dx / dist) * joyRadius; dy = (dy / dist) * joyRadius; }
             joystickX = dx / joyRadius; 
             joystickY = dy / joyRadius; 
-            
             joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
         }
 
-        let startTouchX = 0;
-        let startTouchY = 0;
-        let isLookingTouch = false;
-
+        let startTouchX = 0, startTouchY = 0, isLookingTouch = false;
         renderer.domElement.addEventListener('touchstart', (e) => {
             const touch = e.touches[0];
             const joyRect = joyContainer.getBoundingClientRect();
-            if (touch.clientX >= joyRect.left && touch.clientX <= joyRect.right && touch.clientY >= joyRect.top && touch.clientY <= joyRect.bottom) {
-                return; 
-            }
+            if (touch.clientX >= joyRect.left && touch.clientX <= joyRect.right && touch.clientY >= joyRect.top && touch.clientY <= joyRect.bottom) { return; }
             isLookingTouch = true;
             startTouchX = touch.clientX;
             startTouchY = touch.clientY;
         }, { passive: true });
-
         renderer.domElement.addEventListener('touchmove', (e) => {
             if (!isLookingTouch) return;
             const touch = e.touches[0];
@@ -305,10 +268,7 @@
             startTouchX = touch.clientX;
             startTouchY = touch.clientY;
         }, { passive: true });
-
-        renderer.domElement.addEventListener('touchend', () => {
-            isLookingTouch = false;
-        }, { passive: true });
+        renderer.domElement.addEventListener('touchend', () => { isLookingTouch = false; }, { passive: true });
 
         const speed = 2.5; 
         const minHeight = 1.0; 
@@ -327,7 +287,6 @@
             const forward = new THREE.Vector3(-Math.sin(currentRotationY), 0, -Math.cos(currentRotationY));
             const right = new THREE.Vector3(Math.cos(currentRotationY), 0, -Math.sin(currentRotationY));
             const moveDirection = new THREE.Vector3();
-
             if (keys.w) moveDirection.add(forward);  
             if (keys.s) moveDirection.sub(forward);  
             if (keys.a) moveDirection.sub(right);    
