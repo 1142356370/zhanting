@@ -19,16 +19,10 @@
         #close-btn { position: absolute; top: 30px; right: 40px; background: rgba(255, 50, 50, 0.9); color: white; border: 3px solid white; border-radius: 30px; padding: 10px 20px; font-size: 18px; font-weight: bold; cursor: pointer; z-index: 400; }
         #close-btn:hover { background: red; }
 
-        #app-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; transform-origin: center center; }
-        @media (pointer: coarse) {
-            #app-container { transform: rotate(90deg); width: 100vh; height: 100vw; }
-            #crosshair { display: block; }
-            #instructions { display: none; }
-        }
-
-        #joystick-container { position: absolute; bottom: 40px; left: 30px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; z-index: 250; display: none; touch-action: none; }
+        #joystick-container { position: fixed; bottom: 40px; left: 30px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; z-index: 250; display: none; touch-action: none; }
         #joystick-knob { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; background: rgba(108, 140, 255, 0.8); border: 2px solid white; border-radius: 50%; pointer-events: none; }
-        @media (pointer: coarse) { #joystick-container { display: block; } }
+
+        @media (pointer: coarse) { #joystick-container { display: block; } #crosshair { display: block; } #instructions { display: none; } }
     </style>
     
     <script type="importmap">
@@ -43,13 +37,11 @@
     </script>
 </head>
 <body>
-
-<div id="app-container">
     <div id="loading"><div id="loading-spinner"></div><div id="loading-progress-text">0%</div></div>
     
     <div id="crosshair"></div>
     <div id="instructions">
-        <b>W A S D</b> 移动 &nbsp;&nbsp; <b>鼠标</b> 上下左右转镜头 &nbsp;&nbsp; <b>Q / E</b> 升高 / 降低视角<br>
+        <b>W A S D</b> 移动 &nbsp;&nbsp; <b>鼠标</b> 左右转视角 &nbsp;&nbsp; <b>Q / E</b> 升高 / 降低视角<br>
         准星对准展板点击左键弹出画面
     </div>
 
@@ -60,7 +52,6 @@
         <button id="close-btn" onclick="closeUI()">✕ 关闭</button>
     </div>
     <div id="canvas-container"></div>
-</div>
 
     <script type="module">
         import * as THREE from 'three';
@@ -117,8 +108,9 @@
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
             
+            // 缩小回10米，确保竖屏下有内容看
             const maxDim = Math.max(size.x, size.y, size.z);
-            const scale = 20 / maxDim; // 🚀 放大到20米，确保人在内部
+            const scale = 10 / maxDim; 
             model.scale.set(scale, scale, scale);
             
             const newBox = new THREE.Box3().setFromObject(model);
@@ -129,8 +121,10 @@
             model.position.y -= newMinY;
             
             scene.add(model);
-            camera.position.set(0, 1.35, 0); // 在展厅正中心
-            camera.lookAt(0, 1.35, -5); 
+            
+            // 🚀 初始位置：正对法字展板，高度1米，距离3米
+            camera.position.set(0, 1.0, 3.5); 
+            camera.lookAt(0, 1.0, 0); 
         }, undefined, (error) => { progressText.innerText = '模型加载失败！'; console.error(error); });
 
         const uiMapping = { 
@@ -191,20 +185,14 @@
         const keys = { w: false, a: false, s: false, d: false, q: false, e: false };
         let targetRotationY = 0; 
         let currentRotationY = 0; 
-        
-        // 🚀 鼠标上下控制高度变量
-        let targetHeight = 1.35;
-        let currentHeight = 1.35;
-        const MIN_HEIGHT = 1.2;
-        const MAX_HEIGHT = 2.2;
+        let cameraHeight = 1.0; 
 
         document.addEventListener('keydown', (e) => { 
             if (e.key in keys) keys[e.key] = true; 
-            if (e.key === 'Escape') { targetRotationY = 0; currentRotationY = 0; targetHeight = 1.35; }
+            if (e.key === 'Escape') { targetRotationY = 0; currentRotationY = 0; cameraHeight = 1.0; }
         });
         document.addEventListener('keyup', (e) => { if (e.key in keys) keys[e.key] = false; });
 
-        // 鼠标控制（上下左右全启用）
         renderer.domElement.addEventListener('click', () => {
             if (!document.pointerLockElement && !document.getElementById('info-modal').classList.contains('show')) renderer.domElement.requestPointerLock();
         });
@@ -214,14 +202,10 @@
         });
 
         document.addEventListener('mousemove', (e) => {
-            if (document.pointerLockElement === renderer.domElement) { 
-                targetRotationY -= e.movementX * 0.0008; 
-                targetHeight += e.movementY * 0.005;
-                targetHeight = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, targetHeight));
-            }
+            if (document.pointerLockElement === renderer.domElement) { targetRotationY -= e.movementX * 0.0008; }
         });
 
-        // 手机端摇杆控制
+        // 手机摇杆
         let joystickX = 0, joystickY = 0;
         const joyContainer = document.getElementById('joystick-container');
         const joyKnob = document.getElementById('joystick-knob');
@@ -244,7 +228,7 @@
         joyContainer.addEventListener('touchmove', (e) => { e.preventDefault(); handleJoystick(e.touches[0]); }, { passive: false });
         joyContainer.addEventListener('touchend', (e) => { e.preventDefault(); joystickX = 0; joystickY = 0; joyKnob.style.transform = `translate(-50%, -50%)`; }, { passive: false });
 
-        // 手机端滑动屏幕
+        // 手机滑动
         let startTouchX = 0, startTouchY = 0, isLookingTouch = false;
         renderer.domElement.addEventListener('touchstart', (e) => {
             const touch = e.touches[0];
@@ -258,14 +242,10 @@
             if (!isLookingTouch) return;
             const touch = e.touches[0];
             const deltaX = touch.clientX - startTouchX;
-            const deltaY = touch.clientY - startTouchY;
             
             targetRotationY -= deltaX * 0.005; 
-            targetHeight += deltaY * 0.01;
-            targetHeight = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, targetHeight));
             
             startTouchX = touch.clientX;
-            startTouchY = touch.clientY;
         }, { passive: true });
         renderer.domElement.addEventListener('touchend', () => { isLookingTouch = false; }, { passive: true });
 
@@ -275,10 +255,7 @@
             requestAnimationFrame(animate);
             currentRotationY += (targetRotationY - currentRotationY) * 0.1;
             camera.rotation.y = currentRotationY;
-
-            // 🚀 平滑控制镜头高度并限制范围
-            currentHeight += (targetHeight - currentHeight) * 0.1;
-            camera.position.y = currentHeight;
+            camera.position.y = cameraHeight;
 
             const forward = new THREE.Vector3(-Math.sin(currentRotationY), 0, -Math.cos(currentRotationY));
             const right = new THREE.Vector3(Math.cos(currentRotationY), 0, -Math.sin(currentRotationY));
@@ -309,12 +286,9 @@
         animate();
 
         window.addEventListener('resize', () => {
-            const isMobile = window.matchMedia("(pointer: coarse)").matches;
-            const w = isMobile ? window.innerHeight : window.innerWidth;
-            const h = isMobile ? window.innerWidth : window.innerHeight;
-            renderer.setSize(w, h);
-            camera.aspect = w / h;
+            camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         });
     </script>
 </body>
