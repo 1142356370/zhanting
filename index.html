@@ -67,7 +67,7 @@
         renderer.domElement.style.left = '0';
         container.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xfff5e8, 1.2); 
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2); 
         scene.add(ambientLight);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 3.0); 
         directionalLight.position.set(5, 10, 7.5);
@@ -85,28 +85,17 @@
         let mainModel = null; 
         const loader = new GLTFLoader(manager);
         
-        // 关掉极度压缩算法，用默认加载，保留清晰文字！
         const dracoLoader = new DRACOLoader();
         dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
         loader.setDRACOLoader(dracoLoader);
         
+        // 🚀 绝对纯净的加载方式：只加载，不改任何材质和颜色！
         loader.load('02_new.glb', function (gltf) {
             const model = gltf.scene;
             mainModel = model; 
             model.traverse((child) => { 
                 if (child.isMesh) {
                     child.castShadow = true;
-                    
-                    // ⚠️ 重点：只要模型自身有贴图，就“绝对不要动它”，让它自己正常显示！
-                    if (child.material && child.material.map) {
-                        child.material.color.setHex(0xffffff); // 保留原色
-                        child.material.roughness = 0.8;
-                        child.material.metalness = 0.0;
-                    } else {
-                        child.material.color.setHex(0xdddddd);
-                        child.material.roughness = 0.8;
-                        child.material.metalness = 0.0;
-                    }
                 }
             });
             
