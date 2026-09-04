@@ -31,7 +31,8 @@
                 "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js",
                 "three/addons/loaders/GLTFLoader.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js",
                 "three/addons/loaders/DRACOLoader.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/DRACOLoader.js",
-                "three/addons/utils/BufferGeometryUtils.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js"
+                "three/addons/utils/BufferGeometryUtils.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js",
+                "three/addons/libs/meshopt_decoder.module.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/meshopt_decoder.module.js"
             }
         }
     </script>
@@ -57,6 +58,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+        import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
@@ -69,7 +71,6 @@
         renderer.domElement.style.left = '0';
         container.appendChild(renderer.domElement);
 
-        // 🔥 完美质感基础光照配置（暖白光）
         const ambientLight = new THREE.AmbientLight(0xfff5e8, 1.2); 
         scene.add(ambientLight);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 3.0); 
@@ -88,6 +89,9 @@
         let mainModel = null; 
         const loader = new GLTFLoader(manager);
         
+        // 🚀 修复核心：添加 MeshoptDecoder 解码器！
+        loader.setMeshoptDecoder(MeshoptDecoder);
+
         const dracoLoader = new DRACOLoader();
         dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
         loader.setDRACOLoader(dracoLoader);
@@ -100,7 +104,6 @@
                     child.castShadow = true;
                     const matName = child.material ? child.material.name : '';
 
-                    // 🔥 终极材质映射表
                     if (matName.includes('白色漆')) {
                         child.material = new THREE.MeshStandardMaterial({ color: 0xfff8e6, roughness: 0.9, metalness: 0.0 });
                     } else if (matName.includes('0105_Navy')) {
@@ -114,7 +117,7 @@
                     } else if (matName.includes('zifaguang') || matName.includes('dengpian')) {
                         // 🏮 恒定 LED 灯管（纯白 5,5,5）
                         child.material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-                        child.material.toneMapped = false; // 防止光变暗
+                        child.material.toneMapped = false; 
                     } else if (matName.includes('zifaguang_2')) {
                         // 🏮 科技蓝标题发光字（0, 0.55, 5.0）
                         child.material = new THREE.MeshBasicMaterial({ color: 0x0088ff });
@@ -124,7 +127,6 @@
                         child.material = new THREE.MeshBasicMaterial({ color: 0x66ccff });
                         child.material.toneMapped = false;
                     } else {
-                        // 其它默认保持原色
                         child.material.color.setHex(0xdddddd);
                         child.material.roughness = 0.8;
                         child.material.metalness = 0.0;
