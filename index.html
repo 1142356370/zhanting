@@ -41,7 +41,7 @@
     
     <div id="crosshair"></div>
     <div id="instructions">
-        <b>W A S D</b> 移动 &nbsp;&nbsp; <b>鼠标</b> 左右转视角 &nbsp;&nbsp; <b>Q / E</b> 升高 / 降低视角<br>
+        <b>W A S D</b> 移动 &nbsp;&nbsp; <b>鼠标</b> 上下左右转镜头 &nbsp;&nbsp; <b>Q / E</b> 升高 / 降低视角<br>
         准星对准展板点击左键弹出画面
     </div>
 
@@ -69,12 +69,13 @@
         renderer.domElement.style.left = '0';
         container.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8); 
+        // 🔥 完美质感基础光照配置（暖白光）
+        const ambientLight = new THREE.AmbientLight(0xfff5e8, 1.2); 
         scene.add(ambientLight);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.8); 
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 3.0); 
         directionalLight.position.set(5, 10, 7.5);
         scene.add(directionalLight);
-        const rimLight = new THREE.DirectionalLight(0x4488ff, 0.3); 
+        const rimLight = new THREE.DirectionalLight(0x6c8cff, 0.3); 
         rimLight.position.set(-5, 5, -10);
         scene.add(rimLight);
 
@@ -97,9 +98,36 @@
             model.traverse((child) => { 
                 if (child.isMesh) {
                     child.castShadow = true;
-                    if (child.material) {
-                        if (child.material.map) { child.material.roughness = 0.6; child.material.metalness = 0.05; }
-                        else { child.material.color.setHex(0xdddddd); child.material.roughness = 0.7; child.material.metalness = 0.0; }
+                    const matName = child.material ? child.material.name : '';
+
+                    // 🔥 终极材质映射表
+                    if (matName.includes('白色漆')) {
+                        child.material = new THREE.MeshStandardMaterial({ color: 0xfff8e6, roughness: 0.9, metalness: 0.0 });
+                    } else if (matName.includes('0105_Navy')) {
+                        child.material = new THREE.MeshStandardMaterial({ color: 0x0b1e62, roughness: 0.7, metalness: 0.1 });
+                    } else if (matName.includes('黑漆') && !matName.includes('Mabsiel')) {
+                        child.material = new THREE.MeshStandardMaterial({ color: 0x6a6a70, roughness: 0.65, metalness: 0.05 });
+                    } else if (matName.includes('黑底') || matName.includes('Steel')) {
+                        child.material = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.25, metalness: 0.8 });
+                    } else if (matName.includes('Mabsiel') || matName.includes('Mabsei1')) {
+                        child.material = new THREE.MeshStandardMaterial({ color: 0x1a1c1e, roughness: 0.5, metalness: 0.7 });
+                    } else if (matName.includes('zifaguang') || matName.includes('dengpian')) {
+                        // 🏮 恒定 LED 灯管（纯白 5,5,5）
+                        child.material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                        child.material.toneMapped = false; // 防止光变暗
+                    } else if (matName.includes('zifaguang_2')) {
+                        // 🏮 科技蓝标题发光字（0, 0.55, 5.0）
+                        child.material = new THREE.MeshBasicMaterial({ color: 0x0088ff });
+                        child.material.toneMapped = false;
+                    } else if (matName.includes('faguangzi')) {
+                        // 🏮 淡蓝色发光字（0.22, 0.55, 1.0）
+                        child.material = new THREE.MeshBasicMaterial({ color: 0x66ccff });
+                        child.material.toneMapped = false;
+                    } else {
+                        // 其它默认保持原色
+                        child.material.color.setHex(0xdddddd);
+                        child.material.roughness = 0.8;
+                        child.material.metalness = 0.0;
                     }
                 }
             });
@@ -108,7 +136,6 @@
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
             
-            // 缩小回10米，确保竖屏下有内容看
             const maxDim = Math.max(size.x, size.y, size.z);
             const scale = 10 / maxDim; 
             model.scale.set(scale, scale, scale);
@@ -121,10 +148,8 @@
             model.position.y -= newMinY;
             
             scene.add(model);
-            
-            // 🚀 初始位置：正对法字展板，高度1米，距离3米
-            camera.position.set(0, 1.0, 3.5); 
-            camera.lookAt(0, 1.0, 0); 
+            camera.position.set(0, 1.35, 3.5); 
+            camera.lookAt(0, 1.35, 0); 
         }, undefined, (error) => { progressText.innerText = '模型加载失败！'; console.error(error); });
 
         const uiMapping = { 
@@ -185,11 +210,11 @@
         const keys = { w: false, a: false, s: false, d: false, q: false, e: false };
         let targetRotationY = 0; 
         let currentRotationY = 0; 
-        let cameraHeight = 1.0; 
+        let cameraHeight = 1.35; 
 
         document.addEventListener('keydown', (e) => { 
             if (e.key in keys) keys[e.key] = true; 
-            if (e.key === 'Escape') { targetRotationY = 0; currentRotationY = 0; cameraHeight = 1.0; }
+            if (e.key === 'Escape') { targetRotationY = 0; currentRotationY = 0; cameraHeight = 1.35; }
         });
         document.addEventListener('keyup', (e) => { if (e.key in keys) keys[e.key] = false; });
 
@@ -205,7 +230,7 @@
             if (document.pointerLockElement === renderer.domElement) { targetRotationY -= e.movementX * 0.0008; }
         });
 
-        // 手机摇杆
+        // 手机端摇杆控制
         let joystickX = 0, joystickY = 0;
         const joyContainer = document.getElementById('joystick-container');
         const joyKnob = document.getElementById('joystick-knob');
@@ -228,7 +253,7 @@
         joyContainer.addEventListener('touchmove', (e) => { e.preventDefault(); handleJoystick(e.touches[0]); }, { passive: false });
         joyContainer.addEventListener('touchend', (e) => { e.preventDefault(); joystickX = 0; joystickY = 0; joyKnob.style.transform = `translate(-50%, -50%)`; }, { passive: false });
 
-        // 手机滑动
+        // 手机端滑动屏幕
         let startTouchX = 0, startTouchY = 0, isLookingTouch = false;
         renderer.domElement.addEventListener('touchstart', (e) => {
             const touch = e.touches[0];
@@ -242,9 +267,7 @@
             if (!isLookingTouch) return;
             const touch = e.touches[0];
             const deltaX = touch.clientX - startTouchX;
-            
             targetRotationY -= deltaX * 0.005; 
-            
             startTouchX = touch.clientX;
         }, { passive: true });
         renderer.domElement.addEventListener('touchend', () => { isLookingTouch = false; }, { passive: true });
