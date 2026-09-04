@@ -29,7 +29,8 @@
                 "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js",
                 "three/addons/loaders/GLTFLoader.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js",
                 "three/addons/loaders/DRACOLoader.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/DRACOLoader.js",
-                "three/addons/utils/BufferGeometryUtils.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js"
+                "three/addons/utils/BufferGeometryUtils.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js",
+                "three/addons/libs/meshopt_decoder.module.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/meshopt_decoder.module.js"
             }
         }
     </script>
@@ -55,6 +56,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+        import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
@@ -85,11 +87,12 @@
         let mainModel = null; 
         const loader = new GLTFLoader(manager);
         
+        // 🚀 完美补全：挂载 Meshopt 解码器！
+        loader.setMeshoptDecoder(MeshoptDecoder);
         const dracoLoader = new DRACOLoader();
         dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
         loader.setDRACOLoader(dracoLoader);
         
-        // 🚀 绝对纯净的加载方式：只加载，不改任何材质和颜色！
         loader.load('02_new.glb', function (gltf) {
             const model = gltf.scene;
             mainModel = model; 
