@@ -89,7 +89,6 @@
         let mainModel = null; 
         const loader = new GLTFLoader(manager);
         
-        // 🚀 修复核心：添加 MeshoptDecoder 解码器！
         loader.setMeshoptDecoder(MeshoptDecoder);
 
         const dracoLoader = new DRACOLoader();
