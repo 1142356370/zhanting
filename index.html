@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>展厅漫游</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: "Microsoft YaHei", sans-serif; touch-action: none; background: #111; }
+        #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a1a; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: #fff; transition: opacity 0.8s ease; }
+        #loading-spinner { width: 48px; height: 48px; border: 3px solid rgba(255, 255, 255, 0.1); border-top: 3px solid #6c8cff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 24px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #loading-progress-text { font-size: 14px; letter-spacing: 2px; color: rgba(255, 255, 255, 0.6); }
+        .hidden { opacity: 0; pointer-events: none; }
+        #crosshair { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 8px; height: 8px; background-color: red; border-radius: 50%; z-index: 150; pointer-events: none; display: none; }
+        #instructions { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); color: white; font-size: 16px; text-align: center; z-index: 200; background: rgba(0,0,0,0.7); padding: 12px 20px; border-radius: 8px; pointer-events: none; line-height: 1.8; }
+        #info-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.85); z-index: 300; display: none; justify-content: center; align-items: center; overflow: hidden; }
+        #info-modal.show { display: flex; }
+        #modal-image { max-width: 75vw; max-height: 75vh; object-fit: contain; background: #fff; transition: transform 0.1s ease-out; cursor: grab; user-select: none; }
+        #nav-left, #nav-right { position: absolute; top: 50%; transform: translateY(-50%); width: 60px; height: 60px; background: rgba(255, 255, 255, 0.8); color: #333; border-radius: 50%; font-size: 40px; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: pointer; user-select: none; display: none; z-index: 500; }
+        #nav-left:hover, #nav-right:hover { background: #fff; }
+        #nav-left { left: 20px; } #nav-right { right: 20px; }
+        #close-btn { position: absolute; top: 30px; right: 40px; background: rgba(255, 50, 50, 0.9); color: white; border: 3px solid white; border-radius: 30px; padding: 10px 20px; font-size: 18px; font-weight: bold; cursor: pointer; z-index: 400; }
+        #close-btn:hover { background: red; }
+        #joystick-container { position: fixed; bottom: 40px; left: 30px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; z-index: 250; display: none; touch-action: none; }
+        #joystick-knob { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; background: rgba(108, 140, 255, 0.8); border: 2px solid white; border-radius: 50%; pointer-events: none; }
+        @media (pointer: coarse) { #joystick-container { display: block; } #crosshair { display: block; } #instructions { display: none; } }
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "./three.module.min.js",
+                "three/addons/loaders/GLTFLoader.js": "./GLTFLoader.js",
+                "three/addons/loaders/DRACOLoader.js": "./DRACOLoader.js",
+                "three/addons/utils/BufferGeometryUtils.js": "./utils/BufferGeometryUtils.js",
+                "three/addons/libs/meshopt_decoder.module.js": "./meshopt_decoder.module.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="loading"><div id="loading-spinner"></div><div id="loading-progress-text">0%</div></div>
+    
+    <div id="crosshair"></div>
+    <div id="instructions">
+        <b>W A S D</b> 移动 &nbsp;&nbsp; <b>鼠标</b> 左右转动视角 &nbsp;&nbsp; <b>Q / E</b> 升高 / 降低视角高度<br>
+        准星对准展板点击左键弹出画面
+    </div>
+
+    <div id="joystick-container"><div id="joystick-knob"></div></div>
+
+    <div id="info-modal">
+        <img id="modal-image" src="" alt="图片加载失败">
+        <button id="close-btn" onclick="closeUI()">✕ 关闭</button>
+        <div id="nav-left" onclick="prevImg()">❮</div>
+        <div id="nav-right" onclick="nextImg()">❯</div>
+    </div>
+    <div id="canvas-container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+        import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111122); 
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.domElement.style.position = 'fixed';
+        renderer.domElement.style.top = '0';
+        renderer.domElement.style.left = '0';
+        container.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.8); 
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.8); 
+        directionalLight.position.set(5, 10, 7.5);
+        scene.add(directionalLight);
+
+        const loadingScreen = document.getElementById('loading');
+        const progressText = document.getElementById('loading-progress-text');
+        const manager = new THREE.LoadingManager();
+        manager.onProgress = (url, itemsLoaded, itemsTotal) => { progressText.innerText = (itemsLoaded / itemsTotal * 100).toFixed(0) + '%'; };
+        manager.onLoad = () => { setTimeout(() => { loadingScreen.classList.add('hidden'); setTimeout(() => loadingScreen.style.display = 'none', 800); }, 500); };
+
+        let mainModel = null; 
+        const loader = new GLTFLoader(manager);
+        
+        loader.setMeshoptDecoder(MeshoptDecoder);
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+        loader.setDRACOLoader(dracoLoader);
+        
+        loader.load('0904.glb', function (gltf) {
+            const model = gltf.scene;
+            mainModel = model; 
+            model.traverse((child) => { 
+                if (child.isMesh) {
+                    const matName = child.material ? child.material.name : '';
+                    if (matName.includes('M_Basic_Wall')) {
+                        child.material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0.0 });
+                    }
+                }
+            });
+            
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const scale = 20 / maxDim; 
+            model.scale.set(scale, scale, scale);
+            
+            const newBox = new THREE.Box3().setFromObject(model);
+            const newCenter = newBox.getCenter(new THREE.Vector3());
+            const newMinY = newBox.min.y;
+            model.position.x -= newCenter.x;
+            model.position.z -= newCenter.z;
+            model.position.y -= newMinY;
+            
+            scene.add(model);
+            camera.position.set(0, 2.2, 10); 
+            camera.rotation.set(0, 0, 0); 
+        }, undefined, (error) => { progressText.innerText = '模型加载失败！'; console.error(error); });
+
+        // 无空格文件名映射表
+        const uiMapping = { 
+            "组_339": ["01序言.png"],
+            "组_316": ["03高管中心.png"],
+            "组_344": ["05投资建设.png"],
+            "组_5": ["06工程验收.png"],
+            "组_317": ["07依法规划.png"],
+            "组_335": ["08一路三方.png"],
+            "组_320": ["09依法征收.png"],
+            "组_20": ["10行车安全教育.png"],
+            "组_33": ["12vr.png"],
+            "组_27": ["13-1谨慎驾驶.png"],
+            "组_313": ["13-2谨慎驾驶.png"],
+            "组_322": ["14-1依法打逃.png", "14-2.png"],
+            "组_323": ["15品质护航.png"],
+            "组_38": ["16依法经营.png"],
+            "组_331": ["17-1.png", "17-2.png", "17-3.png"],
+            "组_328": ["19结束语.png"]
+        };
+
+        let currentImages = [];
+        let currentIndex = 0;
+
+        function showUI(srcList) {
+            currentImages = srcList;
+            currentIndex = 0;
+            document.getElementById('modal-image').src = currentImages[currentIndex];
+            document.getElementById('info-modal').classList.add('show');
+            if (currentImages.length > 1) {
+                document.getElementById('nav-left').style.display = 'flex';
+                document.getElementById('nav-right').style.display = 'flex';
+            } else {
+                document.getElementById('nav-left').style.display = 'none';
+                document.getElementById('nav-right').style.display = 'none';
+            }
+            document.exitPointerLock(); 
+            resetImageTransform(); 
+        }
+
+        window.prevImg = function() {
+            if (currentImages.length === 0) return;
+            currentIndex = (currentIndex - 1 + currentImages.length) % currentImages.length;
+            document.getElementById('modal-image').src = currentImages[currentIndex];
+        };
+
+        window.nextImg = function() {
+            if (currentImages.length === 0) return;
+            currentIndex = (currentIndex + 1) % currentImages.length;
+            document.getElementById('modal-image').src = currentImages[currentIndex];
+        };
+        
+        window.closeUI = function() {
+            document.getElementById('info-modal').classList.remove('show');
+            setTimeout(() => { renderer.domElement.requestPointerLock(); }, 100);
+        };
+
+        const raycaster = new THREE.Raycaster();
+        const centerVec = new THREE.Vector2(0, 0);
+        
+        // 点击展板弹出图片
+        renderer.domElement.addEventListener('click', (e) => {
+            if (mainModel) {
+                raycaster.setFromCamera(centerVec, camera);
+                const intersects = raycaster.intersectObject(mainModel, true);
+                if (intersects.length > 0) {
+                    let clickedObj = intersects[0].object;
+                    while (clickedObj) {
+                        if (uiMapping[clickedObj.name]) { showUI(uiMapping[clickedObj.name]); return; }
+                        clickedObj = clickedObj.parent;
+                    }
+                }
+            }
+        });
+
+        const img = document.getElementById('modal-image');
+        const modal = document.getElementById('info-modal');
+        let scale = 1, translateX = 0, translateY = 0, isImgDragging = false, startX = 0, startY = 0;
+        modal.addEventListener('wheel', (e) => {
+            if (!modal.classList.contains('show')) return;
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.1 : -0.1;
+            scale = Math.max(0.5, Math.min(3, scale - delta)); 
+            applyTransform();
+        });
+        img.addEventListener('mousedown', (e) => {
+            isImgDragging = true; startX = e.clientX - translateX; startY = e.clientY - translateY;
+            img.style.cursor = 'grabbing';
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (isImgDragging) { translateX = e.clientX - startX; translateY = e.clientY - startY; applyTransform(); }
+        });
+        document.addEventListener('mouseup', () => { isImgDragging = false; img.style.cursor = 'grab'; });
+        function applyTransform() { img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`; }
+        function resetImageTransform() { scale = 1; translateX = 0; translateY = 0; applyTransform(); }
+
+        const keys = { w: false, a: false, s: false, d: false, q: false, e: false };
+        let targetRotationY = 0; 
+        let currentRotationY = 0; 
+        let cameraHeight = 2.2; 
+        let pitch = 0; // 保持平视！
+
+        document.addEventListener('keydown', (e) => { 
+            if (e.key in keys) keys[e.key] = true; 
+            if (e.key === 'Escape') { targetRotationY = 0; currentRotationY = 0; cameraHeight = 2.2; pitch = 0; camera.rotation.x = 0; }
+        });
+        document.addEventListener('keyup', (e) => { if (e.key in keys) keys[e.key] = false; });
+
+        // 🚀 鼠标左右移动转视角（无需按住）
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === renderer.domElement) { 
+                targetRotationY -= e.movementX * 0.0008; 
+            }
+        });
+
+        renderer.domElement.addEventListener('click', () => {
+            if (!document.pointerLockElement && !document.getElementById('info-modal').classList.contains('show')) renderer.domElement.requestPointerLock();
+        });
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement !== renderer.domElement) { document.getElementById('crosshair').style.display = 'none'; }
+            else { document.getElementById('crosshair').style.display = 'block'; }
+        });
+
+        // 手机端摇杆
+        let joystickX = 0, joystickY = 0;
+        const joyContainer = document.getElementById('joystick-container');
+        const joyKnob = document.getElementById('joystick-knob');
+        const joyRadius = 40;
+
+        function handleJoystick(touch) {
+            const rect = joyContainer.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            let dx = touch.clientX - centerX;
+            let dy = touch.clientY - centerY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist > joyRadius) { dx = (dx / dist) * joyRadius; dy = (dy / dist) * joyRadius; }
+            joystickX = dx / joyRadius; 
+            joystickY = dy / joyRadius; 
+            joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        }
+
+        joyContainer.addEventListener('touchstart', (e) => { e.preventDefault(); handleJoystick(e.touches[0]); }, { passive: false });
+        joyContainer.addEventListener('touchmove', (e) => { e.preventDefault(); handleJoystick(e.touches[0]); }, { passive: false });
+        joyContainer.addEventListener('touchend', (e) => { e.preventDefault(); joystickX = 0; joystickY = 0; joyKnob.style.transform = `translate(-50%, -50%)`; }, { passive: false });
+
+        // 手机滑动转视角
+        let startTouchX = 0, startTouchY = 0, isLookingTouch = false;
+        renderer.domElement.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            const joyRect = joyContainer.getBoundingClientRect();
+            if (touch.clientX >= joyRect.left && touch.clientX <= joyRect.right && touch.clientY >= joyRect.top && touch.clientY <= joyRect.bottom) { return; }
+            isLookingTouch = true;
+            startTouchX = touch.clientX;
+            startTouchY = touch.clientY;
+        }, { passive: true });
+        renderer.domElement.addEventListener('touchmove', (e) => {
+            if (!isLookingTouch) return;
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - startTouchX;
+            targetRotationY -= deltaX * 0.005; 
+            startTouchX = touch.clientX;
+        }, { passive: true });
+        renderer.domElement.addEventListener('touchend', () => { isLookingTouch = false; }, { passive: true });
+
+        const speed = 2.5; 
+
+        function animate() {
+            requestAnimationFrame(animate);
+            currentRotationY += (targetRotationY - currentRotationY) * 0.1;
+            camera.rotation.y = currentRotationY;
+            
+            // 🚀 Q/E 垂直上下移动高度，保持平视！
+            if (keys.q) cameraHeight += 0.05;
+            if (keys.e) cameraHeight -= 0.05;
+            cameraHeight = Math.max(0.8, Math.min(3.5, cameraHeight)); // 限制高度范围
+            camera.position.y = cameraHeight;
+            camera.rotation.x = 0; // 绝对平视，不上下倾斜！
+
+            const forward = new THREE.Vector3(-Math.sin(currentRotationY), 0, -Math.cos(currentRotationY));
+            const right = new THREE.Vector3(Math.cos(currentRotationY), 0, -Math.sin(currentRotationY));
+            const moveDirection = new THREE.Vector3();
+            
+            if (keys.w) moveDirection.add(forward);  
+            if (keys.s) moveDirection.sub(forward);  
+            if (keys.a) moveDirection.sub(right);    
+            if (keys.d) moveDirection.add(right);    
+
+            moveDirection.add(forward.clone().multiplyScalar(-joystickY)); 
+            moveDirection.add(right.clone().multiplyScalar(joystickX));
+
+            if (moveDirection.length() > 0) {
+                moveDirection.normalize();
+                const moveSpeed = speed * 0.016; 
+                const nextPos = camera.position.clone().add(moveDirection.multiplyScalar(moveSpeed));
+                if (mainModel) {
+                    const moveRay = new THREE.Raycaster(camera.position, moveDirection.clone().normalize());
+                    const intersects = moveRay.intersectObject(mainModel, true);
+                    if (intersects.length > 0 && intersects[0].distance < 0.5) {} 
+                    else { camera.position.copy(nextPos); }
+                } else { camera.position.copy(nextPos); }
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
