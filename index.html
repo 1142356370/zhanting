@@ -26,15 +26,12 @@
         @media (pointer: coarse) { #joystick-container { display: block; } #crosshair { display: block; } #instructions { display: none; } }
     </style>
     
-    <!-- ✅ 路径已完全匹配你的 GitHub 文件夹结构！ -->
+    <!-- 纯本地运行，不依赖任何外部文件或缺失的文件 -->
     <script type="importmap">
         {
             "imports": {
                 "three": "./three.module.min.js",
-                "three/addons/loaders/GLTFLoader.js": "./GLTFLoader.js",
-                "three/addons/loaders/DRACOLoader.js": "./DRACOLoader.js",
-                "three/addons/utils/BufferGeometryUtils.js": "./utils/BufferGeometryUtils.js",
-                "three/addons/libs/meshopt_decoder.module.js": "./meshopt_decoder.module.js"
+                "three/addons/loaders/GLTFLoader.js": "./GLTFLoader.js"
             }
         }
     </script>
@@ -61,8 +58,6 @@
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-        import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
@@ -90,11 +85,8 @@
         let mainModel = null; 
         const loader = new GLTFLoader(manager);
         
-        loader.setMeshoptDecoder(MeshoptDecoder);
-        const dracoLoader = new DRACOLoader();
-        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
-        loader.setDRACOLoader(dracoLoader);
-        
+        // 🚀 核心！不再使用 DRACO 和 Meshopt 解码器！直接用原生的 GLTFLoader 加载你的模型！
+        // 只要你的 0904.glb 是正常的 glTF 格式，就能 100% 直接加载！
         loader.load('0904.glb', function (gltf) {
             const model = gltf.scene;
             mainModel = model; 
