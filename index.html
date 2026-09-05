@@ -26,6 +26,7 @@
         @media (pointer: coarse) { #joystick-container { display: block; } #crosshair { display: block; } #instructions { display: none; } }
     </style>
     
+    <!-- ✅ 路径已完全匹配你的 GitHub 文件夹结构！ -->
     <script type="importmap">
         {
             "imports": {
@@ -126,7 +127,6 @@
             camera.rotation.set(0, 0, 0); 
         }, undefined, (error) => { progressText.innerText = '模型加载失败！'; console.error(error); });
 
-        // 无空格文件名映射表
         const uiMapping = { 
             "组_339": ["01序言.png"],
             "组_316": ["03高管中心.png"],
@@ -185,7 +185,6 @@
         const raycaster = new THREE.Raycaster();
         const centerVec = new THREE.Vector2(0, 0);
         
-        // 点击展板弹出图片
         renderer.domElement.addEventListener('click', (e) => {
             if (mainModel) {
                 raycaster.setFromCamera(centerVec, camera);
@@ -225,7 +224,7 @@
         let targetRotationY = 0; 
         let currentRotationY = 0; 
         let cameraHeight = 2.2; 
-        let pitch = 0; // 保持平视！
+        let pitch = 0; 
 
         document.addEventListener('keydown', (e) => { 
             if (e.key in keys) keys[e.key] = true; 
@@ -233,7 +232,6 @@
         });
         document.addEventListener('keyup', (e) => { if (e.key in keys) keys[e.key] = false; });
 
-        // 🚀 鼠标左右移动转视角（无需按住）
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement === renderer.domElement) { 
                 targetRotationY -= e.movementX * 0.0008; 
@@ -248,7 +246,6 @@
             else { document.getElementById('crosshair').style.display = 'block'; }
         });
 
-        // 手机端摇杆
         let joystickX = 0, joystickY = 0;
         const joyContainer = document.getElementById('joystick-container');
         const joyKnob = document.getElementById('joystick-knob');
@@ -271,7 +268,6 @@
         joyContainer.addEventListener('touchmove', (e) => { e.preventDefault(); handleJoystick(e.touches[0]); }, { passive: false });
         joyContainer.addEventListener('touchend', (e) => { e.preventDefault(); joystickX = 0; joystickY = 0; joyKnob.style.transform = `translate(-50%, -50%)`; }, { passive: false });
 
-        // 手机滑动转视角
         let startTouchX = 0, startTouchY = 0, isLookingTouch = false;
         renderer.domElement.addEventListener('touchstart', (e) => {
             const touch = e.touches[0];
@@ -296,13 +292,11 @@
             requestAnimationFrame(animate);
             currentRotationY += (targetRotationY - currentRotationY) * 0.1;
             camera.rotation.y = currentRotationY;
-            
-            // 🚀 Q/E 垂直上下移动高度，保持平视！
             if (keys.q) cameraHeight += 0.05;
             if (keys.e) cameraHeight -= 0.05;
-            cameraHeight = Math.max(0.8, Math.min(3.5, cameraHeight)); // 限制高度范围
+            cameraHeight = Math.max(0.8, Math.min(3.5, cameraHeight));
             camera.position.y = cameraHeight;
-            camera.rotation.x = 0; // 绝对平视，不上下倾斜！
+            camera.rotation.x = 0;
 
             const forward = new THREE.Vector3(-Math.sin(currentRotationY), 0, -Math.cos(currentRotationY));
             const right = new THREE.Vector3(Math.cos(currentRotationY), 0, -Math.sin(currentRotationY));
