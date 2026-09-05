@@ -13,9 +13,25 @@
         .hidden { opacity: 0; pointer-events: none; }
         #crosshair { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 8px; height: 8px; background-color: red; border-radius: 50%; z-index: 150; pointer-events: none; display: none; }
         #instructions { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); color: white; font-size: 16px; text-align: center; z-index: 200; background: rgba(0,0,0,0.7); padding: 12px 20px; border-radius: 8px; pointer-events: none; line-height: 1.8; }
+        
+        /* 🚀 新增：手机横屏按钮 */
+        #rotate-btn {
+            position: fixed;
+            top: 10px; right: 10px;
+            padding: 10px 15px;
+            background: rgba(0,0,0,0.7);
+            border: 1px solid #6c8cff;
+            color: #6c8cff;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 999;
+            cursor: pointer;
+            display: none;
+        }
+
         #info-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.85); z-index: 300; display: none; justify-content: center; align-items: center; overflow: hidden; }
         #info-modal.show { display: flex; }
-        #modal-image { max-width: 75vw; max-height: 75vh; object-fit: contain; background: #fff; transition: transform 0.1s ease-out; cursor: grab; user-select: none; touch-action: none; }
+        #modal-image { max-width: 75vw; max-height: 75vh; object-fit: contain; background: #fff; cursor: grab; user-select: none; touch-action: none; }
         #nav-left, #nav-right { position: absolute; top: 50%; transform: translateY(-50%); width: 60px; height: 60px; background: rgba(255, 255, 255, 0.8); color: #333; border-radius: 50%; font-size: 40px; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: pointer; user-select: none; display: none; z-index: 500; }
         #nav-left:hover, #nav-right:hover { background: #fff; }
         #nav-left { left: 20px; } #nav-right { right: 20px; }
@@ -23,7 +39,27 @@
         #close-btn:hover { background: red; }
         #joystick-container { position: fixed; bottom: 40px; left: 30px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; z-index: 250; display: none; touch-action: none; }
         #joystick-knob { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; background: rgba(108, 140, 255, 0.8); border: 2px solid white; border-radius: 50%; pointer-events: none; }
-        @media (pointer: coarse) { #joystick-container { display: block; } #crosshair { display: block; } #instructions { display: none; } }
+
+        /* 🚀 横屏模式下的 CSS：旋转容器以适配手机屏幕大小 */
+        #app-container {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw;
+            height: 100vh;
+            transform-origin: center center;
+        }
+        #app-container.rotated {
+            transform: rotate(90deg);
+            width: 100vh;
+            height: 100vw;
+        }
+
+        @media (pointer: coarse) { 
+            #joystick-container { display: block; } 
+            #crosshair { display: block; } 
+            #instructions { display: none; }
+            #rotate-btn { display: block; } /* 手机上显示按钮 */
+        }
     </style>
     
     <script type="importmap">
@@ -39,23 +75,28 @@
     </script>
 </head>
 <body>
-    <div id="loading"><div id="loading-spinner"></div><div id="loading-progress-text">0%</div></div>
-    
-    <div id="crosshair"></div>
-    <div id="instructions">
-        <b>W A S D</b> 移动 &nbsp;&nbsp; <b>鼠标</b> 左右转动视角 &nbsp;&nbsp; <b>Q / E</b> 升高 / 降低视角高度<br>
-        准星对准展板点击左键弹出画面
+    <!-- 🚀 横屏容器，包裹整个3D画面 -->
+    <div id="app-container">
+        <div id="loading"><div id="loading-spinner"></div><div id="loading-progress-text">0%</div></div>
+        <div id="crosshair"></div>
+        <div id="instructions">
+            <b>W A S D</b> 移动 &nbsp;&nbsp; <b>鼠标</b> 左右转动视角 &nbsp;&nbsp; <b>Q / E</b> 升高 / 降低视角高度<br>
+            准星对准展板点击左键弹出画面
+        </div>
+
+        <div id="joystick-container"><div id="joystick-knob"></div></div>
+
+        <div id="info-modal">
+            <img id="modal-image" src="" alt="图片加载失败">
+            <button id="close-btn" onclick="closeUI()">✕ 关闭</button>
+            <div id="nav-left" onclick="prevImg()">❮</div>
+            <div id="nav-right" onclick="nextImg()">❯</div>
+        </div>
+        <div id="canvas-container"></div>
     </div>
 
-    <div id="joystick-container"><div id="joystick-knob"></div></div>
-
-    <div id="info-modal">
-        <img id="modal-image" src="" alt="图片加载失败">
-        <button id="close-btn" onclick="closeUI()">✕ 关闭</button>
-        <div id="nav-left" onclick="prevImg()">❮</div>
-        <div id="nav-right" onclick="nextImg()">❯</div>
-    </div>
-    <div id="canvas-container"></div>
+    <!-- 🚀 横屏按钮（默认隐藏，手机端显示） -->
+    <button id="rotate-btn">📱 点击横屏</button>
 
     <script type="module">
         import * as THREE from 'three';
@@ -69,7 +110,7 @@
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.domElement.style.position = 'fixed';
+        renderer.domElement.style.position = 'absolute';
         renderer.domElement.style.top = '0';
         renderer.domElement.style.left = '0';
         container.appendChild(renderer.domElement);
@@ -202,13 +243,9 @@
         const modal = document.getElementById('info-modal');
         let scale = 1, translateX = 0, translateY = 0;
         
-        // ═══════════════════════════════════════════
-        // 🚨 新增：鼠标/触屏双指缩放与拖拽逻辑！
-        // ═══════════════════════════════════════════
+        // 桌面端：滚轮缩放 + 左键拖动
         let isDragging = false;
         let startX = 0, startY = 0;
-
-        // 桌面端：滚轮缩放
         modal.addEventListener('wheel', (e) => {
             if (!modal.classList.contains('show')) return;
             e.preventDefault();
@@ -216,8 +253,6 @@
             scale = Math.max(0.5, Math.min(3, scale - delta)); 
             applyTransform();
         });
-
-        // 桌面端：鼠标左键拖动
         img.addEventListener('mousedown', (e) => {
             isDragging = true; startX = e.clientX - translateX; startY = e.clientY - translateY;
             img.style.cursor = 'grabbing';
@@ -228,38 +263,37 @@
         document.addEventListener('mouseup', () => { isDragging = false; img.style.cursor = 'grab'; });
 
         // ═══════════════════════════════════════════
-        // 手机端：单指拖动 + 双指捏合缩放 (Pinch Zoom)
+        // 🚨 手机端完美适配：单指拖动 + 双指捏合缩放 (Pinch Zoom)
         // ═══════════════════════════════════════════
+        img.style.touchAction = 'none'; // 禁止浏览器默认滚动
+
         let lastTouchDistance = 0;
         let initialScale = 1;
-        let lastTouchX = 0, lastTouchY = 0;
+        let isTouchDragging = false;
+        let touchStartX = 0, touchStartY = 0;
 
         img.addEventListener('touchstart', (e) => {
             e.preventDefault();
             if (e.touches.length === 1) {
-                // 单指：开始拖动
-                isDragging = true;
-                startX = e.touches[0].clientX - translateX;
-                startY = e.touches[0].clientY - translateY;
+                isTouchDragging = true;
+                touchStartX = e.touches[0].clientX - translateX;
+                touchStartY = e.touches[0].clientY - translateY;
             } else if (e.touches.length === 2) {
-                // 双指：记录起始距离和当前缩放
                 const dx = e.touches[0].clientX - e.touches[1].clientX;
                 const dy = e.touches[0].clientY - e.touches[1].clientY;
                 lastTouchDistance = Math.sqrt(dx*dx + dy*dy);
                 initialScale = scale;
-                isDragging = false;
+                isTouchDragging = false;
             }
         }, { passive: false });
 
         img.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            if (e.touches.length === 1 && isDragging) {
-                // 单指拖动
-                translateX = e.touches[0].clientX - startX;
-                translateY = e.touches[0].clientY - startY;
+            if (e.touches.length === 1 && isTouchDragging) {
+                translateX = e.touches[0].clientX - touchStartX;
+                translateY = e.touches[0].clientY - touchStartY;
                 applyTransform();
             } else if (e.touches.length === 2) {
-                // 双指缩放
                 const dx = e.touches[0].clientX - e.touches[1].clientX;
                 const dy = e.touches[0].clientY - e.touches[1].clientY;
                 const distance = Math.sqrt(dx*dx + dy*dy);
@@ -270,10 +304,31 @@
             }
         }, { passive: false });
 
-        img.addEventListener('touchend', () => { isDragging = false; lastTouchDistance = 0; }, { passive: false });
+        img.addEventListener('touchend', () => { isTouchDragging = false; lastTouchDistance = 0; }, { passive: false });
 
         function applyTransform() { img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`; }
         function resetImageTransform() { scale = 1; translateX = 0; translateY = 0; applyTransform(); }
+
+        // ═══════════════════════════════════════════
+        // 🚨 手机横屏切换逻辑
+        // ═══════════════════════════════════════════
+        const appContainer = document.getElementById('app-container');
+        const rotateBtn = document.getElementById('rotate-btn');
+
+        rotateBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            appContainer.classList.add('rotated');
+            rotateBtn.style.display = 'none'; // 隐藏按钮
+
+            // 重新调整 3D 渲染尺寸，完美贴合横屏
+            setTimeout(() => {
+                const newWidth = appContainer.clientWidth;
+                const newHeight = appContainer.clientHeight;
+                renderer.setSize(newWidth, newHeight);
+                camera.aspect = newWidth / newHeight;
+                camera.updateProjectionMatrix();
+            }, 100);
+        });
 
         const keys = { w: false, a: false, s: false, d: false, q: false, e: false };
         let targetRotationY = 0; 
