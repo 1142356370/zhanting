@@ -15,7 +15,7 @@
         #instructions { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); color: white; font-size: 16px; text-align: center; z-index: 200; background: rgba(0,0,0,0.7); padding: 12px 20px; border-radius: 8px; pointer-events: none; line-height: 1.8; }
         #info-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.85); z-index: 300; display: none; justify-content: center; align-items: center; overflow: hidden; }
         #info-modal.show { display: flex; }
-        #modal-image { max-width: 75vw; max-height: 75vh; object-fit: contain; background: #fff; transition: transform 0.1s ease-out; cursor: grab; user-select: none; touch-action: none; }
+        #modal-image { max-width: 75vw; max-height: 75vh; object-fit: contain; background: #fff; transition: transform 0.1s ease-out; cursor: grab; user-select: none; }
         #nav-left, #nav-right { position: absolute; top: 50%; transform: translateY(-50%); width: 60px; height: 60px; background: rgba(255, 255, 255, 0.8); color: #333; border-radius: 50%; font-size: 40px; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: pointer; user-select: none; display: none; z-index: 500; }
         #nav-left:hover, #nav-right:hover { background: #fff; }
         #nav-left { left: 20px; } #nav-right { right: 20px; }
@@ -29,11 +29,10 @@
     <script type="importmap">
         {
             "imports": {
-                "three": "./three.module.min.js",
-                "three/addons/loaders/GLTFLoader.js": "./GLTFLoader.js",
-                "three/addons/loaders/DRACOLoader.js": "./DRACOLoader.js",
-                "three/addons/utils/BufferGeometryUtils.js": "./utils/BufferGeometryUtils.js",
-                "three/addons/libs/meshopt_decoder.module.js": "./meshopt_decoder.module.js"
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js",
+                "three/addons/loaders/GLTFLoader.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js",
+                "three/addons/loaders/DRACOLoader.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/DRACOLoader.js",
+                "three/addons/libs/meshopt_decoder.module.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/meshopt_decoder.module.js"
             }
         }
     </script>
@@ -89,9 +88,13 @@
         let mainModel = null; 
         const loader = new GLTFLoader(manager);
         
+        // 🚨 完美解决：不依赖本地 DRACOLoader，直接在线加载！
         loader.setMeshoptDecoder(MeshoptDecoder);
         const dracoLoader = new DRACOLoader();
-        dracoLoader.setDecoderPath('./'); 
+        
+        // 使用谷歌官方免费的 Draco 解码器！
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/'); 
+        
         loader.setDRACOLoader(dracoLoader);
         
         loader.load('0904.glb', function (gltf) {
@@ -200,15 +203,7 @@
 
         const img = document.getElementById('modal-image');
         const modal = document.getElementById('info-modal');
-        let scale = 1, translateX = 0, translateY = 0;
-        
-        // ═══════════════════════════════════════════
-        // 🚨 新增：鼠标/触屏双指缩放与拖拽逻辑！
-        // ═══════════════════════════════════════════
-        let isDragging = false;
-        let startX = 0, startY = 0;
-
-        // 桌面端：滚轮缩放
+        let scale = 1, translateX = 0, translateY = 0, isImgDragging = false, startX = 0, startY = 0;
         modal.addEventListener('wheel', (e) => {
             if (!modal.classList.contains('show')) return;
             e.preventDefault();
@@ -216,62 +211,14 @@
             scale = Math.max(0.5, Math.min(3, scale - delta)); 
             applyTransform();
         });
-
-        // 桌面端：鼠标左键拖动
         img.addEventListener('mousedown', (e) => {
-            isDragging = true; startX = e.clientX - translateX; startY = e.clientY - translateY;
+            isImgDragging = true; startX = e.clientX - translateX; startY = e.clientY - translateY;
             img.style.cursor = 'grabbing';
         });
         document.addEventListener('mousemove', (e) => {
-            if (isDragging) { translateX = e.clientX - startX; translateY = e.clientY - startY; applyTransform(); }
+            if (isImgDragging) { translateX = e.clientX - startX; translateY = e.clientY - startY; applyTransform(); }
         });
-        document.addEventListener('mouseup', () => { isDragging = false; img.style.cursor = 'grab'; });
-
-        // ═══════════════════════════════════════════
-        // 手机端：单指拖动 + 双指捏合缩放 (Pinch Zoom)
-        // ═══════════════════════════════════════════
-        let lastTouchDistance = 0;
-        let initialScale = 1;
-        let lastTouchX = 0, lastTouchY = 0;
-
-        img.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (e.touches.length === 1) {
-                // 单指：开始拖动
-                isDragging = true;
-                startX = e.touches[0].clientX - translateX;
-                startY = e.touches[0].clientY - translateY;
-            } else if (e.touches.length === 2) {
-                // 双指：记录起始距离和当前缩放
-                const dx = e.touches[0].clientX - e.touches[1].clientX;
-                const dy = e.touches[0].clientY - e.touches[1].clientY;
-                lastTouchDistance = Math.sqrt(dx*dx + dy*dy);
-                initialScale = scale;
-                isDragging = false;
-            }
-        }, { passive: false });
-
-        img.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            if (e.touches.length === 1 && isDragging) {
-                // 单指拖动
-                translateX = e.touches[0].clientX - startX;
-                translateY = e.touches[0].clientY - startY;
-                applyTransform();
-            } else if (e.touches.length === 2) {
-                // 双指缩放
-                const dx = e.touches[0].clientX - e.touches[1].clientX;
-                const dy = e.touches[0].clientY - e.touches[1].clientY;
-                const distance = Math.sqrt(dx*dx + dy*dy);
-                if (lastTouchDistance > 0) {
-                    scale = Math.max(0.5, Math.min(3, initialScale * (distance / lastTouchDistance)));
-                    applyTransform();
-                }
-            }
-        }, { passive: false });
-
-        img.addEventListener('touchend', () => { isDragging = false; lastTouchDistance = 0; }, { passive: false });
-
+        document.addEventListener('mouseup', () => { isImgDragging = false; img.style.cursor = 'grab'; });
         function applyTransform() { img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`; }
         function resetImageTransform() { scale = 1; translateX = 0; translateY = 0; applyTransform(); }
 
